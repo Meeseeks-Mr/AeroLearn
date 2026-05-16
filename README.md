@@ -6,6 +6,7 @@ AeroLearn turns the dense, formula-heavy chapter on "flight" into something you 
 
 No accounts. No ads. Open it, learn for ten minutes, close it.
 
+Access it here https://meeseeks-mr.github.io/AeroLearn/edu-app/
 ---
 
 ## What You'll Learn
