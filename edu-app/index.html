@@ -1,0 +1,1803 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>How Planes Fly</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+:root {
+  --accent:   #4f9fff;
+  --lift:     #00e5a0;
+  --drag:     #ff5050;
+  --weight:   #ffa040;
+  --thrust:   #4f9fff;
+  /* Glass — tuned for visibility on BOTH dark sky and bright cloud backgrounds.
+     Slight blue tint + brighter border + filter-dimming. */
+  --glass-bg: rgba(18,38,72,0.62);
+  --glass-br: rgba(160,200,255,0.34);
+  --glass-fx: blur(22px) brightness(0.78) saturate(1.25);
+  --txt:      #e3efff;
+  --txt2:     #92afd0;
+  --txt3:     #50688a;
+  --r:        13px;
+}
+*, *::before, *::after { box-sizing:border-box; margin:0; padding:0; }
+html, body { height:100%; overflow:hidden; font-family:'Inter',sans-serif;
+  background:#04090f; color:var(--txt); }
+#canvas3d { position:fixed; inset:0; display:block; width:100%; height:100%; touch-action:none; }
+
+/* ── Overlays ─────────────────────────────────────────────────────────────── */
+.ov { position:fixed; z-index:12; pointer-events:none; }
+.ov input, .ov button, .ov a, #nav, #nav * { pointer-events:auto; }
+.glass {
+  background: var(--glass-bg);
+  backdrop-filter: var(--glass-fx); -webkit-backdrop-filter: var(--glass-fx);
+  border: 1px solid var(--glass-br);
+  border-radius: var(--r);
+  box-shadow: 0 4px 24px rgba(0,0,0,.4), inset 0 1px 0 rgba(255,255,255,.08);
+}
+
+/* ── Header / Nav ─────────────────────────────────────────────────────────── */
+#hdr {
+  top:0; left:0; right:0; height:58px;
+  display:flex; align-items:center; gap:12px; padding:0 18px;
+  background: rgba(4,9,20,0.85);
+  backdrop-filter:blur(20px); -webkit-backdrop-filter:blur(20px);
+  border-bottom:1px solid var(--glass-br);
+  z-index:20;
+}
+#logo { display:flex; align-items:baseline; gap:10px; flex-shrink:0; }
+#logo .logo-mark {
+  font-size:23px; font-weight:700; color:var(--accent);
+  letter-spacing:-.4px; white-space:nowrap;
+  text-shadow:0 0 18px rgba(79,159,255,.35);
+}
+#logo .logo-credit {
+  font-size:10.5px; font-weight:400; color:var(--txt3);
+  letter-spacing:.5px; white-space:nowrap; font-style:italic;
+  opacity:.85;
+}
+@media (max-width:680px) {
+  #logo .logo-mark   { font-size:18px; }
+  #logo .logo-credit { font-size:9px; }
+}
+/* Desktop: nav floats over the header, filling the area to the right of the logo. */
+#nav {
+  position:fixed; top:0; left:280px; right:14px; height:58px;
+  display:flex; gap:4px; align-items:center;
+  overflow-x:auto; scrollbar-width:none;
+  z-index:21;
+}
+#nav::-webkit-scrollbar { display:none; }
+.nb {
+  background:transparent; border:1px solid transparent; color:var(--txt2);
+  padding:5px 13px; border-radius:20px; cursor:pointer; font-size:12px;
+  white-space:nowrap; transition:all .18s; font-family:inherit; font-weight:500;
+}
+.nb:hover { color:var(--txt); border-color:rgba(79,159,255,.3); }
+.nb.active {
+  background:linear-gradient(135deg,#1a50b8,#3080f0);
+  color:#fff; border-color:transparent; font-weight:600;
+  box-shadow:0 0 16px rgba(48,128,240,.4);
+}
+
+/* ── Info panel ───────────────────────────────────────────────────────────── */
+#ov-info {
+  top:68px; left:14px; width:305px;
+  max-height:calc(100vh - 78px); overflow:hidden;
+  padding:0;
+  border-top:2px solid var(--accent);
+  display:flex; flex-direction:column;
+  transition: max-height .35s cubic-bezier(.4,0,.2,1);
+}
+#info-header {
+  display:flex; align-items:flex-start; justify-content:space-between;
+  gap:10px; padding:14px 16px 6px;
+  cursor:pointer; pointer-events:auto;
+  position:sticky; top:0; z-index:2;
+  background: linear-gradient(180deg, var(--glass-bg) 70%, transparent);
+  flex-shrink:0;
+}
+#info-header:hover h2 { color:#7ab8ff; }
+#info-header > div { flex:1; min-width:0; }
+#info-toggle {
+  background:rgba(79,159,255,.15); border:1px solid rgba(79,159,255,.3);
+  color:var(--accent); width:26px; height:26px; border-radius:50%;
+  cursor:pointer; padding:0; font-size:11px; line-height:1;
+  display:flex; align-items:center; justify-content:center;
+  transition: transform .3s cubic-bezier(.4,0,.2,1), background .15s;
+  pointer-events:auto; flex-shrink:0;
+}
+#info-toggle:hover { background:rgba(79,159,255,.3); }
+#ov-info.collapsed #info-toggle { transform:rotate(180deg); }
+#ov-info.collapsed { max-height:62px; }
+#ov-info:not(.collapsed) #info-body-wrap {
+  flex:1; overflow-y:auto; padding:0 16px 14px;
+  scrollbar-width:thin; scrollbar-color:rgba(79,159,255,.3) transparent;
+}
+#info-body-wrap::-webkit-scrollbar { width:4px; }
+#info-body-wrap::-webkit-scrollbar-thumb { background:rgba(79,159,255,.3); border-radius:2px; }
+#ov-info h2 { font-size:16.5px; font-weight:700; color:var(--accent); line-height:1.25; }
+#ov-info .sub { font-size:10px; color:var(--txt3); text-transform:uppercase;
+  letter-spacing:.8px; margin:4px 0 0; font-weight:600; }
+.ibody { font-size:12.5px; line-height:1.72; color:#b0cce8; }
+.ibody p  { margin-bottom:10px; }
+.ibody h4 { font-size:11.5px; font-weight:700; letter-spacing:.4px;
+  margin:13px 0 3px; text-transform:uppercase; }
+.ibody .lft { color:var(--lift); }
+.ibody .drg { color:var(--drag); }
+.ibody .wgt { color:var(--weight); }
+.ibody .thr { color:var(--thrust); }
+.ibody strong { color:#dceeff; }
+.ibody em { color:#80b8e8; font-style:normal; font-weight:500; }
+.fact {
+  background:rgba(79,159,255,.1); border-left:3px solid var(--accent);
+  padding:8px 11px; margin:11px 0; border-radius:0 8px 8px 0;
+  font-size:11.5px; color:#93c5fd; line-height:1.6;
+}
+.fact.warn { background:rgba(255,80,80,.1); border-color:var(--drag); color:#ffa0a0; }
+
+/* ── Controls panel ───────────────────────────────────────────────────────── */
+#ov-ctrl {
+  bottom:18px; right:14px; width:252px;
+  padding:14px 16px 12px;
+}
+body:not(.has-controls) #ov-ctrl { display:none; }
+#ov-ctrl-title { font-size:9.5px; font-weight:700; color:var(--txt3);
+  text-transform:uppercase; letter-spacing:.9px; margin-bottom:12px; }
+.cr { margin:11px 0; }
+.ct { display:flex; justify-content:space-between; align-items:baseline;
+  font-size:12px; margin-bottom:4px; }
+.cn { color:#c5ddf8; font-weight:600; }
+.cv { color:var(--accent); font-family:monospace; font-size:11px; }
+.ch { font-size:10px; color:var(--txt3); margin-top:2px; line-height:1.4; }
+/* Slider styling */
+input[type=range] {
+  -webkit-appearance:none; appearance:none; width:100%; height:5px;
+  border-radius:3px; background:rgba(79,159,255,.18); outline:none;
+  cursor:pointer; pointer-events:auto;
+}
+input[type=range]::-webkit-slider-thumb {
+  -webkit-appearance:none; width:17px; height:17px; border-radius:50%;
+  background:var(--accent); cursor:pointer;
+  box-shadow:0 0 10px rgba(79,159,255,.6);
+}
+input[type=range]::-moz-range-thumb {
+  width:17px; height:17px; border-radius:50%; border:none;
+  background:var(--accent); cursor:pointer;
+  box-shadow:0 0 10px rgba(79,159,255,.6);
+}
+
+/* ── Airfoil overlay (canvas shown independently, no container chrome) ───── */
+#ov-af {
+  bottom:18px; left:50%; transform:translateX(-50%);
+  display:none; width:320px;
+  background:transparent !important;
+  border:none !important;
+  backdrop-filter:none !important;
+  -webkit-backdrop-filter:none !important;
+  box-shadow:none !important;
+  padding:0 !important;
+}
+#ov-af canvas {
+  display:block; width:320px; height:188px;
+  border-radius:14px;
+  box-shadow:0 12px 36px rgba(0,0,0,.55), 0 0 0 1px rgba(120,170,230,.18);
+}
+
+/* ── Floating force / part labels ────────────────────────────────────────── */
+.fl { position:fixed; pointer-events:none; transform:translate(-50%,-50%);
+  display:none; z-index:22; }
+.fc {
+  padding:5px 11px; border-radius:7px; font-size:11px; font-weight:700;
+  letter-spacing:.4px; white-space:nowrap; text-align:center; line-height:1.45;
+  box-shadow:0 3px 18px rgba(0,0,0,.6);
+}
+.fcs { font-size:9px; font-weight:400; opacity:.8; }
+#fl-lift   .fc { background:linear-gradient(135deg,#009960,#00e5a0); color:#001a0d; }
+#fl-drag   .fc { background:linear-gradient(135deg,#c02020,#ff5050); color:#fff; }
+#fl-weight .fc { background:linear-gradient(135deg,#b05000,#ffa040); color:#1a0800; }
+#fl-thrust .fc { background:linear-gradient(135deg,#1050b0,#4f9fff); color:#fff; }
+#fl-part   .fc { background:linear-gradient(135deg,#6a0a12,#b21825); color:#fff;
+                 box-shadow:0 3px 18px rgba(178,24,37,.55), 0 0 0 1px rgba(255,255,255,.08) inset; }
+
+/* Airfoil shown via body.has-airfoil class (cleaner than inline style) */
+#ov-af { display:none; }
+body.has-airfoil #ov-af { display:block; }
+
+/* ── MOBILE ───────────────────────────────────────────────────────────────── */
+@media (max-width:680px) {
+  :root { --nav-w:60px; --hdr-h:44px; --ctrl-h:130px; --af-h:120px; }
+
+  /* Header — logo only (nav moved to the side strip) */
+  #hdr { height:var(--hdr-h); padding:0 12px; }
+  #logo { font-size:13.5px; }
+
+  /* Vertical tab strip on the LEFT.
+     !important values defeat the desktop horizontal-bar geometry
+     (top:0;left:170px;right:14px;height:52px) which would otherwise
+     over-constrain this element and squash it to 52px tall. */
+  #nav {
+    position:fixed !important;
+    top:calc(var(--hdr-h) + 6px) !important;
+    bottom:6px !important;
+    left:6px !important;
+    right:auto !important;
+    width:var(--nav-w) !important;
+    height:auto !important;
+    flex-direction:column;
+    gap:5px;
+    overflow-y:auto; overflow-x:hidden;
+    background:rgba(4,12,26,0.78);
+    backdrop-filter:blur(18px); -webkit-backdrop-filter:blur(18px);
+    border:1px solid var(--glass-br); border-radius:12px;
+    padding:6px 5px; z-index:18;
+    align-items:stretch;
+    scrollbar-width:none;
+  }
+  #nav::-webkit-scrollbar { display:none; }
+  .nb {
+    font-size:0; padding:9px 4px; line-height:1; text-align:center;
+    border-radius:9px; width:100%; min-height:42px;
+    display:flex; align-items:center; justify-content:center;
+    background:rgba(79,159,255,.04);
+  }
+  .nb::after {
+    content:attr(data-short);
+    font-size:10.5px; font-weight:600;
+    color:var(--txt2);
+    transition:color .15s;
+  }
+  .nb.active::after { color:#fff; }
+  .nb.active {
+    background:linear-gradient(135deg,#1a50b8,#3080f0);
+    box-shadow:0 0 14px rgba(48,128,240,.4);
+  }
+
+  /* Canvas: fills the entire area between header (top) and viewport bottom.
+     Controls/airfoil FLOAT on top with glassmorphism (no reserved space).
+     Explicit calc() because <canvas> is a replaced element and width/height:auto
+     would fall back to intrinsic 300×150. */
+  #canvas3d {
+    top:var(--hdr-h) !important;
+    left:calc(var(--nav-w) + 12px) !important;
+    right:auto !important;
+    bottom:auto !important;
+    width:  calc(100vw - var(--nav-w) - 18px)  !important;
+    height: calc(100vh - var(--hdr-h) - 6px)   !important;
+  }
+
+  /* Info panel hidden on mobile — replaced by Details modal */
+  #ov-info { display:none !important; }
+
+  .ibody { font-size:12.5px; }
+
+  /* Controls panel — dynamic height, floats over the canvas with glassmorphism.
+     No scrollbar — the panel grows to fit however many sliders are in the lesson. */
+  #ov-ctrl {
+    position:fixed !important;
+    top:auto !important;
+    bottom:8px !important;
+    left:calc(var(--nav-w) + 12px) !important;
+    right:8px !important;
+    width:auto !important;
+    max-height:none !important; overflow:visible !important;
+    padding:10px 14px 10px;
+    border-radius:14px;
+    z-index:13;
+    background:rgba(10,22,46,0.72) !important;
+    backdrop-filter:blur(28px) brightness(0.62) saturate(1.4) !important;
+    -webkit-backdrop-filter:blur(28px) brightness(0.62) saturate(1.4) !important;
+    border:1px solid rgba(160,200,255,0.36) !important;
+    box-shadow:0 10px 36px rgba(0,0,0,0.6), inset 0 1px 0 rgba(255,255,255,0.10);
+  }
+  #ov-ctrl-title { margin-bottom:6px; }
+  .cr { margin:7px 0 5px; }
+  .ch { display:none; }                   /* hide hint lines on mobile to save room */
+
+  /* Airfoil overlay (Lift lesson only) — independent canvas, no container chrome */
+  body.has-airfoil #ov-af {
+    position:fixed !important;
+    top:auto !important;
+    left:calc(var(--nav-w) + 12px) !important;
+    right:8px !important;
+    width:auto !important;
+    height:var(--af-h) !important;
+    padding:0 !important;
+    z-index:12;
+    display:flex; align-items:center; justify-content:center;
+    transform:none !important;
+    background:transparent !important;
+    border:none !important;
+    backdrop-filter:none !important;
+    -webkit-backdrop-filter:none !important;
+    box-shadow:none !important;
+  }
+  body.has-controls.has-airfoil #ov-af { bottom:calc(var(--ctrl-h) + 16px) !important; }
+  body.has-airfoil:not(.has-controls) #ov-af { bottom:8px !important; }
+  #ov-af canvas {
+    width:100%; height:100%;
+    object-fit:contain; aspect-ratio:640/360;
+  }
+
+  /* Details capsule button — floats over canvas, above whatever bottom panel is showing */
+  #details-btn {
+    position:fixed;
+    left:calc(var(--nav-w) + 50%); transform:translateX(-50%);
+    bottom:14px;
+    display:flex; align-items:center; gap:6px;
+    background:rgba(4,12,26,0.86);
+    backdrop-filter:blur(14px); -webkit-backdrop-filter:blur(14px);
+    border:1px solid rgba(79,159,255,.3);
+    color:var(--accent);
+    padding:7px 16px 7px 14px; border-radius:22px;
+    font-family:inherit; font-size:11px; font-weight:600; letter-spacing:.4px;
+    cursor:pointer; z-index:14;
+    box-shadow:0 6px 22px rgba(0,0,0,.55), 0 0 0 1px rgba(255,255,255,.04) inset;
+    transition:transform .15s, box-shadow .15s;
+  }
+  #details-btn:active { transform:translateX(-50%) scale(.96); }
+  #details-btn span   { font-size:13px; line-height:1; }
+  body.has-controls            #details-btn { bottom:calc(var(--ctrl-h) + 12px); }
+  body.has-airfoil             #details-btn { bottom:calc(var(--ctrl-h) + var(--af-h) + 18px); }
+  body.has-airfoil:not(.has-controls) #details-btn { bottom:calc(var(--af-h) + 12px); }
+
+  /* Smaller force labels on mobile */
+  .fc  { font-size:9.5px; padding:4px 8px; }
+  .fcs { font-size:8px; }
+}
+
+/* Details button hidden on desktop (modal still usable for keyboard testing) */
+@media (min-width:681px) { #details-btn { display:none; } }
+
+/* ── Details modal (mobile lesson description) ───────────────────────────── */
+#details-modal {
+  display:none;
+  position:fixed; inset:0; z-index:30;
+  background:rgba(4,10,22,0.66);
+  backdrop-filter:blur(8px); -webkit-backdrop-filter:blur(8px);
+  align-items:center; justify-content:center;
+  padding:20px;
+  animation:dmFade .25s ease-out;
+}
+#details-modal.open { display:flex; }
+@keyframes dmFade { from { opacity:0; } to { opacity:1; } }
+#details-inner {
+  width:100%; max-width:560px; max-height:88vh;
+  display:flex; flex-direction:column;
+  padding:18px 18px 16px;
+  background:rgba(4,12,26,0.94);
+  border:1px solid rgba(79,159,255,.24);
+  border-top:3px solid var(--accent);
+  border-radius:16px;
+  box-shadow:0 24px 60px rgba(0,0,0,.65);
+  animation:dmSlide .35s cubic-bezier(.16,.84,.32,1);
+}
+@keyframes dmSlide { from { transform:translateY(18px); opacity:0; } to { transform:translateY(0); opacity:1; } }
+#details-header {
+  display:flex; align-items:flex-start; justify-content:space-between;
+  gap:14px; margin-bottom:10px; padding-bottom:10px;
+  border-bottom:1px solid rgba(79,159,255,.12);
+}
+#dm-title { font-size:17px; font-weight:700; color:var(--accent); line-height:1.25; }
+#dm-sub   { font-size:10px; color:var(--txt3); text-transform:uppercase;
+            letter-spacing:.8px; margin-top:4px; font-weight:600; }
+#details-close {
+  background:rgba(79,159,255,.14); border:1px solid rgba(79,159,255,.32);
+  color:var(--accent); width:32px; height:32px; border-radius:50%;
+  font-size:14px; line-height:1; cursor:pointer; flex-shrink:0;
+  font-family:inherit;
+}
+#details-close:hover { background:rgba(79,159,255,.26); }
+#details-body { flex:1; overflow-y:auto; padding-right:4px;
+  scrollbar-width:thin; scrollbar-color:rgba(79,159,255,.3) transparent; }
+#details-body::-webkit-scrollbar { width:4px; }
+#details-body::-webkit-scrollbar-thumb { background:rgba(79,159,255,.3); border-radius:2px; }
+
+/* ── DESKTOP: bigger airfoil ──────────────────────────────────────────────── */
+@media (min-width:681px) {
+  #ov-af {
+    width: min(560px, calc(100vw - 660px));
+    bottom:18px; left:50%; transform:translateX(-50%);
+  }
+  #ov-af canvas {
+    width:100%; height:auto; aspect-ratio:640/360;
+    display:block;
+  }
+}
+
+/* ── Stall warning banner ─────────────────────────────────────────────────── */
+#stall-warn {
+  position:fixed; top:60px; left:50%; transform:translateX(-50%);
+  background:linear-gradient(135deg,#c02020,#ff5050); color:#fff;
+  font-weight:700; padding:7px 18px; border-radius:8px;
+  font-size:12px; letter-spacing:1.2px;
+  box-shadow:0 4px 28px rgba(255,80,80,.55), 0 0 0 1px rgba(255,255,255,.12) inset;
+  z-index:25; pointer-events:none; display:none;
+  animation: stallPulse .55s infinite alternate;
+}
+@keyframes stallPulse {
+  from { opacity:.78; transform:translateX(-50%) scale(.98); }
+  to   { opacity:1;   transform:translateX(-50%) scale(1.04); }
+}
+@media (max-width:680px){ #stall-warn { top:52px; font-size:11px; padding:6px 14px; } }
+
+/* ── Interaction hint ─────────────────────────────────────────────────────── */
+#interact-hint {
+  position:fixed; z-index:15; pointer-events:none;
+  top:64px; left:50%; transform:translateX(-50%);
+  display:flex; align-items:center; gap:7px;
+  padding:6px 14px 6px 12px;
+  background:rgba(18,38,72,0.55);
+  backdrop-filter:blur(16px) saturate(1.2);
+  -webkit-backdrop-filter:blur(16px) saturate(1.2);
+  border:1px solid rgba(160,200,255,0.30);
+  border-radius:20px;
+  color:#cfdef2; font-size:11px; font-weight:500; letter-spacing:.2px;
+  white-space:nowrap;
+  box-shadow:0 4px 16px rgba(0,0,0,.4);
+  opacity:0; transition:opacity .4s ease-out;
+}
+#interact-hint.show { opacity:1; }
+#interact-hint .ih-ico { font-size:13px; line-height:1; }
+@media (max-width:680px) {
+  #interact-hint {
+    top:calc(var(--hdr-h) + 6px); bottom:auto;
+    left:calc(50% + var(--nav-w)/2); transform:translateX(-50%);
+    font-size:10px; padding:5px 12px;
+    max-width:calc(100vw - var(--nav-w) - 40px);
+    white-space:normal; text-align:center; line-height:1.3;
+  }
+  #interact-hint .ih-txt { display:inline; }
+}
+
+/* ── Splash screen ────────────────────────────────────────────────────────── */
+#splash {
+  position:fixed; inset:0; z-index:9999;
+  background:
+    radial-gradient(ellipse at 50% 30%, rgba(48,128,240,0.32) 0%, rgba(4,9,20,0) 55%),
+    radial-gradient(ellipse at 50% 90%, rgba(80,200,255,0.12) 0%, rgba(4,9,20,0) 60%),
+    linear-gradient(180deg, #061528 0%, #04090f 100%);
+  display:flex; align-items:center; justify-content:center;
+  font-family:'Inter',sans-serif;
+  transition:opacity .55s ease-out, transform .55s ease-out;
+}
+#splash.fade { opacity:0; transform:scale(1.04); pointer-events:none; }
+#splash-inner {
+  text-align:center; padding:36px 28px; max-width:480px;
+  animation:splashUp .9s cubic-bezier(.16,.84,.32,1);
+}
+@keyframes splashUp { from { transform:translateY(24px); opacity:0; } to { transform:translateY(0); opacity:1; } }
+#splash-plane {
+  font-size:64px; line-height:1; margin-bottom:14px;
+  color:var(--accent);
+  text-shadow:0 0 36px rgba(79,159,255,.65), 0 0 90px rgba(79,159,255,.35);
+  animation:splashFly 3.4s ease-in-out infinite;
+}
+@keyframes splashFly {
+  0%,100% { transform:translate(-2px,0) rotate(-2deg); }
+  50%     { transform:translate(2px,-9px) rotate(6deg); }
+}
+#splash-title {
+  font-size:54px; font-weight:700; letter-spacing:-1.6px;
+  background:linear-gradient(135deg, #ffffff 0%, #4f9fff 60%, #b9e6ff 100%);
+  -webkit-background-clip:text; background-clip:text;
+  -webkit-text-fill-color:transparent; color:transparent;
+  margin-bottom:6px;
+}
+#splash-sub {
+  font-size:13px; color:#8db4e0; letter-spacing:.6px;
+  margin-bottom:30px; text-transform:uppercase; font-weight:500;
+}
+#splash-dots { display:flex; gap:8px; justify-content:center; margin-bottom:24px; }
+#splash-dots span {
+  width:7px; height:7px; border-radius:50%;
+  background:var(--accent); opacity:.4;
+  animation:splashDot 1.4s infinite ease-in-out;
+}
+#splash-dots span:nth-child(2) { animation-delay:.18s; }
+#splash-dots span:nth-child(3) { animation-delay:.36s; }
+@keyframes splashDot { 0%,80%,100%{opacity:.25;transform:scale(.85);} 40%{opacity:1;transform:scale(1.15);} }
+#splash-enter {
+  background:linear-gradient(135deg,#1a50b8,#3080f0);
+  color:#fff; font-family:inherit; font-weight:600;
+  border:none; padding:13px 38px; border-radius:26px;
+  font-size:14.5px; letter-spacing:.4px; cursor:pointer;
+  box-shadow:0 6px 32px rgba(48,128,240,.55), 0 0 0 1px rgba(255,255,255,.12) inset;
+  transition:transform .15s ease-out, box-shadow .15s;
+}
+#splash-enter:hover  { transform:translateY(-2px); box-shadow:0 9px 40px rgba(48,128,240,.7), 0 0 0 1px rgba(255,255,255,.15) inset; }
+#splash-enter:active { transform:translateY(0); }
+#splash-credit {
+  margin-top:32px; font-size:11.5px; line-height:1.55;
+  color:#6585a8; letter-spacing:.2px;
+}
+#splash-credit strong { color:#b9d5f0; font-weight:600; }
+#splash-credit .wink  { color:#506580; font-style:italic; }
+@media (max-width:680px) {
+  #splash-title { font-size:42px; letter-spacing:-1.2px; }
+  #splash-plane { font-size:48px; }
+  #splash-sub   { font-size:11.5px; }
+}
+</style>
+</head>
+<body>
+
+<!-- Splash screen — shown on first load -->
+<div id="splash">
+  <div id="splash-inner">
+    <div id="splash-plane">✈</div>
+    <h1 id="splash-title">AeroLearn</h1>
+    <div id="splash-sub">The Physics of Flight, Visualised</div>
+    <div id="splash-dots"><span></span><span></span><span></span></div>
+    <button id="splash-enter">Take off →</button>
+    <div id="splash-credit">
+      Crafted with rather suspicious dedication by <strong>dio.stesso</strong><br>
+      <span class="wink">— who, evidently, has rather too much time on their hands. ✨</span>
+    </div>
+  </div>
+</div>
+
+<canvas id="canvas3d"></canvas>
+
+<!-- Header (logo bar) -->
+<div id="hdr" class="ov">
+  <div id="logo">
+    <span class="logo-mark">✈ AeroLearn</span>
+    <span class="logo-credit">by dio.stesso</span>
+  </div>
+</div>
+
+<!-- Nav — sibling of header so fixed positioning works on mobile.
+     Desktop CSS overlays it on top of the header. -->
+<nav id="nav">
+  <button class="nb" data-l="forces"  data-short="Forces">4 Forces</button>
+  <button class="nb" data-l="lift"    data-short="Lift">Wings &amp; Lift</button>
+  <button class="nb" data-l="flaps"   data-short="Flaps">Flaps &amp; Slow Flight</button>
+  <button class="nb" data-l="stab"    data-short="Stabs">Stabilisers</button>
+  <button class="nb" data-l="roll"    data-short="Roll">Ailerons &amp; Roll</button>
+  <button class="nb" data-l="yaw"     data-short="Yaw">Rudder &amp; Yaw</button>
+  <button class="nb" data-l="pitch"   data-short="Pitch">Elevator &amp; Pitch</button>
+  <button class="nb" data-l="explore" data-short="Fly">🎮 Fly It!</button>
+</nav>
+
+<!-- Info -->
+<div id="ov-info" class="ov glass">
+  <div id="info-header">
+    <div>
+      <h2 id="ititle"></h2>
+      <div class="sub" id="isub"></div>
+    </div>
+    <button id="info-toggle" aria-label="Toggle lesson info">▼</button>
+  </div>
+  <div id="info-body-wrap">
+    <div class="ibody" id="ibody"></div>
+  </div>
+</div>
+
+<!-- Airfoil (lift only) -->
+<div id="ov-af" class="ov glass">
+  <canvas id="af-cv" width="640" height="360"></canvas>
+</div>
+
+<!-- Controls -->
+<div id="ov-ctrl" class="ov glass">
+  <div id="ov-ctrl-title">Controls</div>
+  <div id="crows"></div>
+</div>
+
+<!-- Details capsule button (mobile only) -->
+<button id="details-btn" aria-label="Open lesson details">
+  <span>📖</span> Details
+</button>
+
+<!-- Details modal (mobile only) -->
+<div id="details-modal" role="dialog" aria-modal="true">
+  <div id="details-inner" class="glass">
+    <div id="details-header">
+      <div>
+        <h2 id="dm-title"></h2>
+        <div class="sub" id="dm-sub"></div>
+      </div>
+      <button id="details-close" aria-label="Close details">✕</button>
+    </div>
+    <div id="details-body" class="ibody"></div>
+  </div>
+</div>
+
+<!-- Interaction hint (auto-fades after a few seconds, reappears on lesson change) -->
+<div id="interact-hint">
+  <span class="ih-ico">✋</span>
+  <span class="ih-txt">Drag to rotate&nbsp;·&nbsp;Pinch / scroll to zoom&nbsp;·&nbsp;Two-finger drag to pan</span>
+</div>
+
+<!-- Stall warning -->
+<div id="stall-warn">⚠ STALL — AIRFLOW SEPARATED, LIFT COLLAPSING</div>
+
+<!-- Labels -->
+<div id="fl-lift"   class="fl"><div class="fc">LIFT<br><span class="fcs">↑ upward force</span></div></div>
+<div id="fl-drag"   class="fl"><div class="fc">DRAG<br><span class="fcs">← air resistance</span></div></div>
+<div id="fl-weight" class="fl"><div class="fc">WEIGHT<br><span class="fcs">↓ gravity</span></div></div>
+<div id="fl-thrust" class="fl"><div class="fc">THRUST<br><span class="fcs">→ engine push</span></div></div>
+<div id="fl-part"   class="fl"><div id="fl-part-txt" class="fc"></div></div>
+
+<script type="importmap">
+{ "imports": {
+  "three":        "https://unpkg.com/three@0.160.0/build/three.module.js",
+  "three/addons/":"https://unpkg.com/three@0.160.0/examples/jsm/"
+}}
+</script>
+<script type="module">
+import * as THREE from 'three';
+import { GLTFLoader    } from 'three/addons/loaders/GLTFLoader.js';
+import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+import { Sky           } from 'three/addons/objects/Sky.js';
+
+// ─── LESSON DATA ──────────────────────────────────────────────────────────────
+const LESSONS = {
+
+forces:{
+  title:'The 4 Forces of Flight',
+  sub:'Why planes don\'t fall out of the sky',
+  body:`
+<p>At every moment of flight, your aircraft is engaged in a <strong>delicate tug-of-war between four forces</strong>. Master these and you understand the entire physics of aviation.</p>
+
+<h4 class="lft">↑ Lift — The Magic Upward Force</h4>
+<p>Lift is generated almost entirely by the wings as they slice through the air. The wings' special curved shape — called an <em>airfoil</em> — makes air flow faster over the top than the bottom. Faster air means lower pressure (Bernoulli's Principle), so the wing is literally <strong>sucked upward</strong>. Tilt the nose up and lift increases — until you tilt too far and the airflow separates, causing a <em>stall</em>.</p>
+
+<h4 class="wgt">↓ Weight — Gravity Never Stops</h4>
+<p>Every kilogram of airframe, engine, fuel, cargo and passenger pulls downward toward Earth's centre. A light aircraft like this one weighs around 700 kg. A fully loaded Airbus A380 weighs <strong>575,000 kg</strong> — yet its massive wings generate enough lift to carry it 15,000 km non-stop. Weight always acts straight down through the aircraft's centre of gravity.</p>
+
+<h4 class="thr">→ Thrust — Pushing Through the Air</h4>
+<p>The propeller spins and flings air backward. By Newton's Third Law (<em>"every action has an equal and opposite reaction"</em>), the aircraft is pushed <strong>forward with equal force</strong>. In jet aircraft, thrust comes from burning fuel and expelling hot gas at tremendous speed. Without thrust, the plane slows until it can no longer maintain lift.</p>
+
+<h4 class="drg">← Drag — The Invisible Brake</h4>
+<p>Air resistance opposes every movement through the atmosphere. Even the smoothest aircraft creates drag — from its shape, surface friction, and the lift-generating process itself. Engineers spend billions making airframes more aerodynamic. Reducing drag by just 1% on a commercial jet saves millions of litres of fuel per year.</p>
+
+<div class="fact">⚖️ <strong>Steady level flight</strong> happens when Lift = Weight AND Thrust = Drag. Change any one force and the aircraft climbs, descends, speeds up, or slows down.</div>
+<div class="fact">💡 Try the sliders: <strong>more throttle</strong> → more thrust → more speed → more lift. <strong>Higher angle of attack</strong> → nose tilts up → wings bite more air → lift grows — until stall!</div>
+<div class="fact">🏆 Fun fact: The Wright Brothers' first flight in 1903 lasted 12 seconds and covered 37 metres. Today's aircraft cross oceans in hours using exactly the same four-force balance!</div>`,
+  controls:[
+    {id:'throttle',label:'Throttle',    min:0,  max:100,value:60,unit:'%',
+     hint:'Controls thrust and propeller speed'},
+    {id:'aoa',     label:'Angle of Attack',min:-8,max:18, value:4, unit:'°',
+     hint:'Negative → nose down (lift drops). 0–14° → lift grows. >15° → STALL!'}
+  ]
+},
+
+lift:{
+  title:'Wings & Lift',
+  sub:"Bernoulli's Principle & Newton's 3rd Law",
+  body:`
+<p>How does a 575-tonne aircraft defy gravity? The answer lies in a piece of curved metal barely 3 metres from front to back: <strong>the wing</strong>.</p>
+
+<h4 class="lft">The Airfoil Shape</h4>
+<p>A wing's cross-section — called an <em>airfoil</em> — is carefully designed with a more curved top surface and a flatter bottom. This shape is no accident: it has been mathematically optimised over a century of aeronautical engineering. The curvature is different on every aircraft, tuned for its exact speed, weight, and mission.</p>
+
+<h4 class="lft">Bernoulli's Principle</h4>
+<p>When air approaches the wing, it splits at the leading edge. Air going over the <strong>curved top has to travel a longer path</strong> in the same time, so it speeds up. Daniel Bernoulli (1700s) showed that <em>faster-moving fluid has lower pressure</em>. Result: lower pressure above the wing, higher pressure below — a pressure difference that <strong>pushes the wing upward</strong>. That's lift!</p>
+
+<h4 class="lft">Angle of Attack</h4>
+<p>The angle between the wing chord and the oncoming air is the <em>angle of attack (AoA)</em>. A higher AoA means the wing is tilted more aggressively into the airflow, increasing lift — but also increasing drag. Above about 15°, the airflow can no longer follow the wing's top surface and breaks away in a chaotic tumble. This is a <strong>stall</strong> — lift drops dramatically. Every pilot trains extensively to recover from stalls.</p>
+
+<div class="fact">🔴 Watch the <strong>red particles</strong> (fast, low-pressure air) above the wing and the <strong>blue particles</strong> (slow, high-pressure air) below. The pressure difference is what pushes the wing up.</div>
+<div class="fact">⚠️ Drag the <strong>Angle of Attack</strong> slider past 15° and watch the stall — the streamlines break apart and lift collapses.</div>
+<div class="fact">✈️ A typical airliner cruises at just 2–4° angle of attack. Fighter jets can sustain over 30° AoA using thrust vectoring and special aerodynamics.</div>`,
+  airfoil:true,
+  controls:[
+    {id:'aoa',   label:'Angle of Attack',min:-5,max:20,value:5,unit:'°',
+     hint:'Watch streamlines change. Above 15° → stall!'},
+    {id:'aspeed',label:'Airspeed',       min:20,max:120,value:60,unit:' kts',
+     hint:'Higher speed → faster particles → more lift'}
+  ]
+},
+
+flaps:{
+  title:'Flaps & Slow Flight',
+  sub:'How airliners land safely on short runways',
+  body:`
+<p>Watch any airliner approaching the runway and you'll see panels extending from the back of its wings — these are the <em>flaps</em>. They're one of the most ingenious devices in aviation, letting massive aircraft take off and land at safe, low speeds on relatively short runways.</p>
+
+<h4 class="lft">The Speed Problem</h4>
+<p>Lift depends on the wing's shape, its angle to the air, and most critically <strong>speed squared</strong>. Half the speed means a quarter of the lift. A 200-tonne airliner cruising at 500 mph is fine — but landing at 150 mph, the bare wings would generate only 9% of cruise lift. Without help, the plane would simply fall out of the sky.</p>
+
+<h4 class="lft">What Flaps Do</h4>
+<p>Flaps extend from the trailing edge of the wing's <em>inboard section</em> (close to the fuselage), dramatically increasing wing <strong>camber</strong> and sometimes wing area. A more curved, larger wing produces more lift at the same speed. Watch the highlighted flaps: as they deploy, the lift vector grows even at constant airspeed — that's the extra lift that keeps the plane flying slowly.</p>
+
+<h4 class="lft">Takeoff vs Landing</h4>
+<p>On <strong>takeoff</strong>, pilots use partial flaps (typically 10–20°) — enough for extra lift to leave the runway, with minimal drag. After climbing, the flaps retract. On <strong>landing</strong>, pilots deploy full flaps (30–40°) for both maximum lift AND maximum drag, so the aircraft descends steeply at a safe, slow speed.</p>
+
+<h4 class="lft">Flaps vs Ailerons</h4>
+<p>Flaps and ailerons look similar but do very different jobs. <strong>Ailerons</strong> move in opposite directions to roll the plane. <strong>Flaps</strong> move together (both down) to add lift. Ailerons are at the wingtips for roll authority; flaps are inboard for clean, symmetric lift generation.</p>
+
+<div class="fact">📐 Drag the <strong>Flap Deployment</strong> slider and watch the green lift arrow grow — even though the airspeed didn't change. Now reduce airspeed: the lift vector shrinks fast without flaps, but holds up much better with them deployed.</div>
+<div class="fact">⚠️ Flaps add lift AND drag. With full flaps out, climbing back up is hard — that's why pilots deploy them in stages and only commit to full flaps when sure of the landing.</div>
+<div class="fact">✈️ The Boeing 747 has triple-slotted flaps that combine three separate panels for maximum lift. The Concorde, with its delta wing, had no flaps — and landed at 165 knots, 70+ knots faster than a 747.</div>`,
+  highlight:['LeftFlap','RightFlap'], partLabel:'FLAPS',
+  controls:[
+    {id:'flaps', label:'Flap Position', min:-30, max:30, value:0, unit:'°',
+     hint:'Positive → flaps DOWN (more lift). Negative → flaps UP (reflexed → reverses lift).'},
+    {id:'aspeed',label:'Airspeed',        min:30,max:120,value:80,unit:' kts',
+     hint:'Lower this and watch — without flaps the wing stops lifting.'}
+  ]
+},
+
+stab:{
+  title:'Stabilisers — Built-in Balance',
+  sub:'The "tail feathers" that keep planes pointing forward',
+  body:`
+<p>Imagine throwing a dart with no feathers — it would tumble end over end. Aircraft face the exact same problem, and the solution is the same as on a dart: <strong>stabilisers</strong>. They are the small wing-like surfaces at the very back of every aircraft.</p>
+
+<h4 class="accent">The Horizontal Stabiliser</h4>
+<p>The flat surface at the tail (highlighted in blue) is the <em>horizontal stabiliser</em>. Its job is to <strong>damp out unwanted pitch motion</strong>. If a gust pushes the nose up, the airflow strikes the underside of the stabiliser harder, pushing the tail up and the nose back down — automatically, without the pilot doing anything. It's the same idea as a weathervane: the long tail naturally swings into the wind.</p>
+
+<h4 class="accent">The Vertical Stabiliser (Fin)</h4>
+<p>The tall fin sticking up at the back is the <em>vertical stabiliser</em>. It does the same job — but for yaw (left/right). If the nose wanders left, the air hits the fin's right side and pushes the tail left, swinging the nose back to centre. Without it, the aircraft would slither sideways through the sky like a fish.</p>
+
+<h4 class="accent">Static vs Dynamic Stability</h4>
+<p>Engineers call this <em>static stability</em>: the natural tendency to return to a stable position when disturbed. Add to this <em>dynamic stability</em> — how quickly and smoothly it recovers — and you have a self-balancing aircraft that flies straight even when the pilot lets go.</p>
+
+<h4 class="accent">A Subtle Trick</h4>
+<p>The horizontal stabiliser is mounted at a slightly negative angle — it actually produces a small <strong>downward</strong> force in normal flight. This balances the natural nose-down moment from the main wing's lift, keeping the aircraft in trim. Without this counter-balance, the plane would always want to pitch nose-down.</p>
+
+<div class="fact">📐 The control surfaces you've already met live ON the stabilisers: the <strong>elevator</strong> is hinged to the horizontal stabiliser, the <strong>rudder</strong> is hinged to the vertical fin. Stabilisers are the fixed "platform" — control surfaces are the moveable trim.</div>
+<div class="fact">🦅 Birds have it built in too — their fanned tail feathers act as a combined horizontal + vertical stabiliser, with the tail acting as both stabiliser AND elevator/rudder all at once.</div>
+<div class="fact">🚀 Some modern fighters are deliberately designed to be <em>unstable</em> — they need flight computers correcting hundreds of times per second to stay upright. Why? Unstable aircraft are far more agile in dogfights.</div>`,
+  highlight:['Stabilizer'],
+  partLabel:'HORIZONTAL STABILISER',
+  controls:[]
+},
+
+roll:{
+  title:'Ailerons & Roll',
+  sub:'How aircraft bank into turns',
+  body:`
+<p>If you've ever watched a plane bank elegantly into a turn, you've seen ailerons at work. These small hinged surfaces on the trailing edge of each wing are the primary means of <strong>controlling the roll axis</strong> — rotation around the aircraft's nose-to-tail centreline.</p>
+
+<h4 class="accent">How Ailerons Work</h4>
+<p>Ailerons on opposite wings always move in <strong>opposite directions</strong>. When the left aileron moves down, it increases the curvature of the left wing, generating more lift on that side. Simultaneously, the right aileron moves up, reducing the right wing's lift. The difference in lift between the two wings <strong>rolls the aircraft</strong>.</p>
+
+<h4 class="accent">Banking and Turning</h4>
+<p>When an aircraft banks (rolls), the lift force — which always acts perpendicular to the wings — tilts sideways. The horizontal component of lift now pulls the aircraft to the side, curving the flight path. This is how aircraft turn: <strong>roll to bank, then the banked lift turns you</strong>. Unlike a car, you cannot simply yaw (point the nose sideways) to turn efficiently at speed.</p>
+
+<div class="fact">🔄 Watch the highlighted ailerons: when the right aileron goes up and left goes down, the whole plane rolls right. The bank angle is proportional to the aileron deflection.</div>
+<div class="fact">⚡ Modern airliner ailerons are connected to <em>fly-by-wire</em> computers that sense thousands of inputs per second and deflect the surfaces perfectly — no direct mechanical linkage from the pilot's hand.</div>
+<div class="fact">💡 In a 60° banked turn, the wings must produce twice the normal lift just to keep the aircraft level — requiring either more speed or more angle of attack.</div>`,
+  highlight:['LeftAileron','RightAileron'], partLabel:'AILERONS',
+  controls:[
+    {id:'aileron',label:'Aileron',min:-30,max:30,value:0,unit:'°',
+     hint:'Right (+) → right aileron up, left down → rolls right'}
+  ]
+},
+
+yaw:{
+  title:'Rudder & Yaw',
+  sub:'Pointing the nose left and right',
+  body:`
+<p>The rudder controls <em>yaw</em> — rotation of the aircraft's nose left and right around its vertical axis. It works remarkably like a boat's rudder, just in a different fluid.</p>
+
+<h4 class="accent">The Vertical Fin & Rudder</h4>
+<p>The large vertical surface at the tail is the <em>vertical stabiliser</em>. It keeps the aircraft flying straight, like the feathers on an arrow. Attached to its trailing edge is the hinged <em>rudder</em>. When deflected left, the tail is pushed right and the <strong>nose yaws left</strong>. The further it deflects (up to ~30°), the stronger the yaw moment.</p>
+
+<h4 class="accent">Coordinated Turns</h4>
+<p>Rudder and ailerons work together in a <em>coordinated turn</em>. Without rudder, a banked aircraft experiences <em>adverse yaw</em> — the nose initially swings the wrong way. Applying the correct rudder eliminates this. Properly coordinated flight keeps passengers comfortable and the aircraft efficient. Pilots use a small ball instrument in the cockpit to check coordination.</p>
+
+<h4 class="accent">Ground Steering</h4>
+<p>On the ground, the rudder (combined with the nose wheel steering) allows the pilot to steer the aircraft during taxi, takeoff roll, and landing. Crosswind landings require significant rudder skill — keeping the aircraft aligned with the runway while the wind tries to push it sideways.</p>
+
+<div class="fact">🚢 A ship's rudder and an aircraft's rudder work on exactly the same principle: deflect a surface into the flow, and the stern (or tail) gets pushed sideways.</div>
+<div class="fact">💡 On large jets, the rudder is divided into segments and may be automatically limited at high speed to prevent structural damage from excessive yaw forces.</div>`,
+  highlight:['Rudder'], partLabel:'RUDDER',
+  controls:[
+    {id:'rudder',label:'Rudder',min:-30,max:30,value:0,unit:'°',
+     hint:'Left (−) → nose swings left. Right (+) → nose right.'}
+  ]
+},
+
+pitch:{
+  title:'Elevator & Pitch',
+  sub:'Nose up, nose down, climb and descend',
+  body:`
+<p>Pitch — the rotation of the aircraft's nose up or down around its lateral axis — is controlled by the <em>elevator</em> at the horizontal tail. It's the most directly felt control: pull back on the stick and you climb; push forward and you descend.</p>
+
+<h4 class="accent">Horizontal Stabiliser & Elevator</h4>
+<p>The fixed horizontal surfaces at the tail are the <em>horizontal stabilisers</em>. Like the vertical fin, they provide stability — preventing the aircraft from pitching uncontrollably. The movable elevator is hinged to the stabiliser's trailing edge. Raising the elevator pushes the <strong>tail down</strong>, rotating the nose <strong>up</strong>. The aircraft pitches nose-up and begins to climb.</p>
+
+<h4 class="accent">Pitch, Speed & Climb</h4>
+<p>Pitching up <em>alone</em> doesn't make you climb indefinitely. As the nose rises, the aircraft's lift increases — but so does drag, and the aircraft begins to slow down. To sustain a climb, the pilot must <strong>simultaneously add throttle</strong> to maintain airspeed. If speed drops too much with nose up, the aircraft stalls. This pitch-power coupling is one of the most important concepts student pilots must master.</p>
+
+<div class="fact">📐 The highlighted <strong>elevator</strong> (moving surface) and <strong>stabiliser</strong> (fixed surface) are shown in blue. Watch the whole aircraft's nose rise and fall as you move the slider.</div>
+<div class="fact">✈️ Many modern airliners use a <em>trimmable horizontal stabiliser</em> — the entire tail surface pivots, not just the elevator — for more precise pitch control at different speeds and weights.</div>
+<div class="fact">⚡ The Concorde supersonic airliner had no separate horizontal stabilisers — its delta wing provided both lift and pitch control, with <em>elevons</em> (combined elevator + aileron).</div>`,
+  highlight:['Elevator'], partLabel:'ELEVATOR',
+  controls:[
+    {id:'elevator',label:'Elevator',min:-30,max:30,value:0,unit:'°',
+     hint:'Pull back (+) → nose rises → climb. Push fwd (−) → dive.'}
+  ]
+},
+
+explore:{
+  title:'🎮 Fly It!',
+  sub:'All controls active — be the pilot',
+  body:`
+<p>Now you have control of all four primary flight controls simultaneously. Try to feel how they interact:</p>
+
+<p><strong>Coordinated turn:</strong> Roll with aileron, then apply the same-direction rudder to keep the ball centred. The plane curves into a turn.</p>
+<p><strong>Climbing turn:</strong> Add throttle, pull elevator back, roll and add rudder. Feel the propeller spin up!</p>
+<p><strong>Crosswind correction:</strong> Use aileron one way and rudder the other — the plane crabs sideways through the air.</p>
+
+<div class="fact">🏆 <strong>Ultimate challenge:</strong> Perform a climbing left turn: throttle up, left aileron, left rudder, back elevator — all at once! Real pilots do this in seconds without thinking.</div>
+<div class="fact">💡 Notice how the environment tilts when you roll, the horizon rises when you climb, and the clouds rush past faster with more throttle.</div>`,
+  controls:[
+    {id:'throttle', label:'Throttle',  min:0,  max:100,value:60,unit:'%'},
+    {id:'aileron',  label:'Aileron',   min:-30,max:30, value:0, unit:'°'},
+    {id:'rudder',   label:'Rudder',    min:-30,max:30, value:0, unit:'°'},
+    {id:'elevator', label:'Elevator',  min:-30,max:30, value:0, unit:'°'}
+  ]
+}
+
+}; // end LESSONS
+
+// ─── RENDERER ─────────────────────────────────────────────────────────────────
+const canvas3d = document.getElementById('canvas3d');
+const renderer = new THREE.WebGLRenderer({ canvas:canvas3d, antialias:true });
+renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
+renderer.toneMapping = THREE.ACESFilmicToneMapping;
+renderer.toneMappingExposure = 0.95;   // brighter natural-daylight feel
+renderer.outputColorSpace = THREE.SRGBColorSpace;
+
+const scene  = new THREE.Scene();
+const camera = new THREE.PerspectiveCamera(42, 1, 0.1, 2000);
+camera.position.set(-12, 2, 4);
+
+const orbit = new OrbitControls(camera, canvas3d);
+orbit.enableDamping = true; orbit.dampingFactor = 0.07;
+orbit.minDistance = 2; orbit.maxDistance = 160;
+
+// camera flyTo: disables orbit during transition, re-enables after
+let camAnim = null;
+function flyTo(pos, tgt, dur=1.2) {
+  camAnim = { t:0, dur,
+    p0:camera.position.clone(), t0:orbit.target.clone(),
+    p1:pos.clone(), t1:tgt.clone() };
+  orbit.enabled = false;
+}
+function tickCam(dt) {
+  if (!camAnim) return;
+  camAnim.t += dt;
+  const f = Math.min(camAnim.t/camAnim.dur, 1);
+  const e = 1 - Math.pow(1-f, 3);
+  camera.position.lerpVectors(camAnim.p0, camAnim.p1, e);
+  orbit.target.lerpVectors(camAnim.t0, camAnim.t1, e);
+  orbit.update();
+  if (f >= 1) { camAnim = null; orbit.enabled = true; }
+}
+
+// ─── SKY ──────────────────────────────────────────────────────────────────────
+const sky = new Sky(); sky.scale.setScalar(1200); scene.add(sky);
+const su  = sky.material.uniforms;
+su.turbidity.value      = 5;
+su.rayleigh.value       = 1.8;
+su.mieCoefficient.value = 0.003;
+su.mieDirectionalG.value= 0.84;
+const sunDir = new THREE.Vector3();
+(function() {
+  const phi   = THREE.MathUtils.degToRad(90-12);
+  const theta = THREE.MathUtils.degToRad(215);
+  sunDir.setFromSphericalCoords(1, phi, theta);
+  su.sunPosition.value.copy(sunDir);
+})();
+
+// Natural-daylight rig — ambient sky bounce, warm sun key, cool fill.
+scene.add(new THREE.AmbientLight(0xbcd6ee, 0.95));
+const sunL = new THREE.DirectionalLight(0xfff2da, 2.4);
+sunL.position.copy(sunDir).multiplyScalar(200); scene.add(sunL);
+const fillL = new THREE.DirectionalLight(0x88aad8, 0.75);
+fillL.position.set(-1, 0.4, -1); scene.add(fillL);
+// Subtle bottom bounce from clouds below
+const bounceL = new THREE.DirectionalLight(0xc8d8ea, 0.35);
+bounceL.position.set(0.2, -1, 0.3); scene.add(bounceL);
+scene.fog = new THREE.Fog(0x7aafe0, 250, 900);
+
+// ─── CLOUDS ──────────────────────────────────────────────────────────────────
+// No ground plane — the aircraft floats in the sky, surrounded by clouds.
+// This avoids the "horizon line at camera level" illusion that made the
+// plane appear to be sitting on the ground.
+let cloudObjs=[];
+function makeCloud() {
+  const g=new THREE.Group();
+  const n=4+Math.floor(Math.random()*4);
+  for(let i=0;i<n;i++){
+    const r=7+Math.random()*11;
+    const m=new THREE.Mesh(new THREE.SphereGeometry(r,8,6),
+      new THREE.MeshLambertMaterial({color:0xeef5ff,transparent:true,
+        opacity:.70+Math.random()*.22}));
+    m.scale.set(1.1+Math.random()*.9, .45+Math.random()*.3, .9+Math.random()*.7);
+    m.position.set((Math.random()-.5)*r*3,(Math.random()-.5)*r*.4,(Math.random()-.5)*r*2.5);
+    g.add(m);
+  }
+  return g;
+}
+function initClouds(cy) {
+  // Clouds above and below the plane to create real "high altitude" feel
+  for(let i=0;i<52;i++){
+    const c=makeCloud();
+    const bx=(Math.random()-.5)*500;
+    const above=Math.random()>.4;
+    const by= above
+      ? cy + 30 + Math.random()*90
+      : cy - 50 - Math.random()*180;
+    const bz=(Math.random()-.5)*500;
+    c.position.set(bx,by,bz);
+    c._bx=bx; c._by=by; c._bz=bz;
+    scene.add(c); cloudObjs.push(c);
+  }
+}
+let scrollX=0, scrollY=0, scrollZ=0;
+function tickClouds(dt){
+  const thr=(lessonInputs.throttle??60)/100;
+  const speed = 20 + thr*55;
+  // Cloud flow tracks the plane's actual heading + climb:
+  //   yaw → lateral drift (clouds sweep sideways when turning)
+  //   pitch-up → vertical drift (clouds fall past the camera when climbing)
+  const yawR   = poseCur.yaw   * Math.PI/180;
+  const pitchR = poseCur.pitch * Math.PI/180;
+  const fX =  Math.sin(yawR)   * Math.cos(pitchR);
+  const fY = -Math.sin(pitchR);                       // pitch<0 (nose-up) → fY>0 → clouds drop
+  const fZ =  Math.cos(yawR)   * Math.cos(pitchR);
+  scrollX += speed * fX * dt;
+  scrollY += speed * fY * dt;
+  scrollZ += speed * fZ * dt;
+  for(const c of cloudObjs){
+    c.position.x = c._bx - scrollX;
+    c.position.y = c._by - scrollY;
+    c.position.z = c._bz - scrollZ;
+    if(c.position.z < -450) c._bz += 900;
+    if(c.position.z > +450) c._bz -= 900;
+    if(c.position.x < -400) c._bx += 800;
+    if(c.position.x > +400) c._bx -= 800;
+    if(c.position.y < -260) c._by += 520;
+    if(c.position.y > +260) c._by -= 520;
+  }
+}
+
+// ─── ENVIRONMENT TILT (roll/pitch feel) ───────────────────────────────────────
+function tickEnvTilt(dt){
+  const a=1-Math.exp(-2.5*dt);
+  const rz=(-poseCur.roll *.52)*Math.PI/180;
+  const rx=(-poseCur.pitch*.38)*Math.PI/180;
+  for(const c of cloudObjs){
+    c.rotation.z+=(rz-c.rotation.z)*a;
+    c.rotation.x+=(rx-c.rotation.x)*a;
+  }
+}
+
+// ─── RIG & MODEL ──────────────────────────────────────────────────────────────
+let rig=null, modelRoot=null;
+const MC=new THREE.Vector3(0,0,4); // model centre (updated on load)
+let   MHS=7;                       // model half-size
+const bodyC=new THREE.Vector3();   // force-arrow origin (inside fuselage)
+const parts={}, LO={};             // parts map, lesson overrides
+let   gThrottle=60;
+
+const _M=new THREE.Matrix4(),_T1=new THREE.Matrix4(),
+      _R=new THREE.Matrix4(),_T2=new THREE.Matrix4(),_ax=new THREE.Vector3();
+
+function applyPart(name,t){
+  const p=parts[name]; if(!p)return;
+  const c=rig.parts[name];
+  _ax.set(c.rotation_axis==='X'?1:0,c.rotation_axis==='Y'?1:0,c.rotation_axis==='Z'?1:0)
+     .multiplyScalar(c.axis_sign);
+  const pv=c.pivot_offset; let deg=0;
+  if(c.mode==='continuous_spin'||c.mode==='roll'){
+    deg=t*c.rate_deg_per_sec*(0.12+0.88*(gThrottle/100));
+  } else if(name in LO){ deg=LO[name]; }
+  _T1.makeTranslation(pv[0],pv[1],pv[2]);
+  _R.makeRotationAxis(_ax,deg*Math.PI/180);
+  _T2.makeTranslation(-pv[0],-pv[1],-pv[2]);
+  _M.copy(p.orig).multiply(_T1).multiply(_R).multiply(_T2);
+  p.node.matrix.copy(_M);
+  p.node.matrixWorldNeedsUpdate=true;
+}
+
+const hilighted=new Set();
+function setHL(names){
+  clearHL();
+  for(const n of names){ const p=parts[n]; if(!p)continue;
+    p.meshes.forEach((m,i)=>{ const mat=p.mats[i].clone();
+      if('emissive'in mat){mat.emissive.set(0x9a1218);mat.emissiveIntensity=0.85;}
+      m.material=mat;});
+    hilighted.add(n);}
+}
+function clearHL(){
+  for(const n of hilighted){ const p=parts[n]; if(!p)continue;
+    p.meshes.forEach((m,i)=>m.material=p.mats[i]);}
+  hilighted.clear();
+}
+function pCentre(name){
+  if(!parts[name])return MC.clone();
+  return new THREE.Box3().setFromObject(parts[name].node).getCenter(new THREE.Vector3());
+}
+
+const poseCur={roll:0,yaw:0,pitch:0}, poseGoal={roll:0,yaw:0,pitch:0};
+let stallShakeT=0;
+function tickPose(dt){
+  const a=1-Math.exp(-2*dt);
+  for(const k of['roll','yaw','pitch']) poseCur[k]+=(poseGoal[k]-poseCur[k])*a;
+  // Stall buffet: when AoA > 15° in forces/lift lessons, add chaotic shake
+  const aoa=lessonInputs.aoa??0;
+  const stalled=(curLesson==='forces'||curLesson==='lift') && aoa>15;
+  stallShakeT+=dt*(stalled?22:0);
+  const sx=stalled?Math.sin(stallShakeT)*1.8 + Math.sin(stallShakeT*2.3)*.8:0;
+  const sz=stalled?Math.sin(stallShakeT*1.7)*1.4:0;
+  if(modelRoot){
+    modelRoot.rotation.z = (poseCur.roll +sz)*Math.PI/180;
+    modelRoot.rotation.y =  poseCur.yaw       *Math.PI/180;
+    modelRoot.rotation.x = (poseCur.pitch+sx)*Math.PI/180;
+  }
+}
+
+fetch('../plane_rig.json').then(r=>r.json()).then(data=>{
+  rig=data;
+  new GLTFLoader().load('../'+data.model, gltf=>{
+    modelRoot=gltf.scene; scene.add(modelRoot);
+    const bbox=new THREE.Box3().setFromObject(modelRoot);
+    bbox.getCenter(MC); MHS=bbox.getSize(new THREE.Vector3()).length()*.5;
+
+    // Body centre for force arrow origins
+    const bodyNode=modelRoot.getObjectByName('Body');
+    if(bodyNode) new THREE.Box3().setFromObject(bodyNode).getCenter(bodyC);
+    else bodyC.copy(MC);
+
+    for(const name in data.parts){
+      const node=modelRoot.getObjectByName(name); if(!node) continue;
+      node.updateMatrix();
+      const meshes=[],mats=[];
+      node.traverse(c=>{if(c.isMesh){meshes.push(c);mats.push(c.material);}});
+      parts[name]={node,orig:node.matrix.clone(),meshes,mats};
+      node.matrixAutoUpdate=false;
+    }
+
+    camera.near=MHS*.01; camera.far=MHS*200; camera.updateProjectionMatrix();
+    orbit.minDistance=MHS*.3; orbit.maxDistance=MHS*25;
+
+    // No ground — plane is high in the sky. Clouds surround above & below.
+    initClouds(MC.y);
+    initArrows();
+    initControlArrows();
+    initParticles();
+    enterLesson('forces');
+  });
+}).catch(e=>console.error('Rig load failed:',e));
+
+// ─── FANCY ARROW (volumetric, emissive, alpha-gradient shaft) ────────────────
+// Tapered cylindrical shaft (alpha 0→1 along its length) + opaque cone head.
+//   0–20% of arrow length: fully transparent
+//   20–70%:                fades in linearly
+//   70–100% (incl. head):  fully opaque
+const _ARROW_UP = new THREE.Vector3(0,1,0);
+// Shared 4×256 grayscale gradient used as the shaft alphaMap.
+//   Black pixels → alpha 0,  white pixels → alpha 1.
+//   With default texture.flipY=true, the canvas TOP row maps to UV V=1 (shaft tip)
+//   and the canvas BOTTOM row to V=0 (shaft base). So we want white on top, black on bottom.
+//   Shaft occupies roughly 80–85% of the arrow length, so a 15%–80% canvas-Y window
+//   places the gradient transition over ~20%–70% of the arrow.
+const _arrowAlphaTex = (() => {
+  const cv = document.createElement('canvas');
+  cv.width = 4; cv.height = 256;
+  const ctx = cv.getContext('2d');
+  const grad = ctx.createLinearGradient(0, 0, 0, 256);
+  grad.addColorStop(0.00, 'rgb(255,255,255)');  // V=1  shaft tip       → opaque
+  grad.addColorStop(0.15, 'rgb(255,255,255)');  // V≈.85 ~70% of arrow  → opaque
+  grad.addColorStop(0.80, 'rgb(0,0,0)');        // V≈.20 ~20% of arrow  → transparent
+  grad.addColorStop(1.00, 'rgb(0,0,0)');        // V=0  shaft base      → transparent
+  ctx.fillStyle = grad;
+  ctx.fillRect(0, 0, 4, 256);
+  const t = new THREE.CanvasTexture(cv);
+  t.minFilter = THREE.LinearFilter;
+  t.magFilter = THREE.LinearFilter;
+  t.needsUpdate = true;
+  return t;
+})();
+
+class FancyArrow extends THREE.Group {
+  constructor(color){
+    super();
+    this._col = new THREE.Color(color);
+    // openEnded:true skips end caps (caps would inherit messy radial UVs and
+    // disrupt the vertical alpha gradient). Caps aren't needed visually.
+    const shaftG = new THREE.CylinderGeometry(1, 1, 1, 28, 1, true);
+    shaftG.translate(0, 0.5, 0);
+    const headG  = new THREE.ConeGeometry(1, 1, 32);
+    headG.translate(0, 0.5, 0);
+
+    const mkMat = (em, op, cc=0, alphaMap=null)=> {
+      const m = new THREE.MeshPhysicalMaterial({
+        color:this._col, emissive:this._col, emissiveIntensity:em,
+        roughness:0.30, metalness:0.55,
+        transparent:true, opacity:op,
+        clearcoat:cc, clearcoatRoughness:0.35,
+        depthWrite:false,
+        side:THREE.DoubleSide   // open cylinder — show both sides
+      });
+      if(alphaMap){ m.alphaMap = alphaMap; m.alphaTest = 0.01; }
+      return m;
+    };
+    this.shaftMat = mkMat(0.55, 1.00, 0, _arrowAlphaTex); // alphaMap-faded
+    this.headMat  = mkMat(0.95, 0.98, 0.6);               // fully opaque tip
+
+    this.shaft = new THREE.Mesh(shaftG, this.shaftMat);
+    this.head  = new THREE.Mesh(headG,  this.headMat);
+    this.shaft.renderOrder = 6;
+    this.head.renderOrder  = 7;
+    this.add(this.shaft, this.head);
+  }
+  setLength(len, headLen, headWid){
+    const hl = Math.min(headLen, len*0.55);
+    const sl = Math.max(0.001, len - hl);
+    const sr = headWid * 0.34;
+    const hr = headWid * 0.62;
+    this.shaft.scale.set(sr, sl, sr);
+    this.head .scale.set(hr, hl, hr);
+    this.head .position.y = sl;
+  }
+  setDirection(dir){
+    this.quaternion.setFromUnitVectors(_ARROW_UP, dir);
+  }
+  setColor(c){
+    this._col.set(c);
+    [this.shaftMat, this.headMat].forEach(m=>{
+      m.color.copy(this._col); m.emissive.copy(this._col);
+    });
+  }
+}
+
+// ─── FORCE ARROWS ─────────────────────────────────────────────────────────────
+// Lift, thrust and drag are tied to the plane's body frame (they rotate when the
+// plane pitches/rolls). Weight always points straight down in world frame.
+const FA={}, ADEF={
+  lift:  {col:0x00e5a0},
+  drag:  {col:0xff5050},
+  weight:{col:0xffa040},
+  thrust:{col:0x4f9fff}
+};
+const _xAx=new THREE.Vector3(),_yAx=new THREE.Vector3(),_zAx=new THREE.Vector3();
+const _tmpDir=new THREE.Vector3();
+
+// Physics: lift coefficient as function of AoA.
+//   Zero-lift AoA is ~-3° for a cambered wing.
+//   Linear region up to stall at +15°.
+//   Above stall, lift drops.  Below zero-lift, lift goes negative.
+function liftFactor(a){
+  const zl=-3, stall=15;
+  if(a < zl)     return Math.max(-0.55, (a-zl)*0.085);
+  if(a <= stall) return (a-zl)*0.07;
+  const peak = (stall-zl)*0.07;
+  return Math.max(0.28, peak - (a-stall)*0.38);
+}
+
+function initArrows(){
+  for(const[k,d]of Object.entries(ADEF)){
+    const a=new FancyArrow(d.col);
+    a.setLength(4, .9, .5);
+    a.position.copy(bodyC);
+    a.visible=false; scene.add(a); FA[k]=a;
+  }
+}
+
+// Force-arrow scale. Reduced from 0.3 → 0.20 so vectors always fit inside the
+// viewport at the chosen camera distances (no cropping on desktop or mobile).
+const FA_S_MULT = 0.20;
+let lastLiftF=1, lastLiftLen=0;
+// Update only the magnitudes (called from applyInputs when sliders move).
+//   spdKts    – if provided (Lift / Flaps lessons), lift scales with airspeed (~v¹·⁶).
+//   liftBoost – multiplier for high-lift devices (flaps). May be negative — a
+//               reflexed flap (slider <0) inverts the lift vector.
+function updateArrows(thr, aoa, spdKts, liftBoost){
+  const t=thr/100, a=aoa??4, S=MHS*FA_S_MULT;
+  const lf=liftFactor(a);
+  const spdFactor = spdKts !== undefined ? Math.pow(Math.max(spdKts,1)/60, 1.6) : 1.0;
+  const boost     = liftBoost ?? 1.0;
+  // Effective signed lift — sign flips if either liftFactor or boost is negative.
+  const effLf     = lf * boost;
+  lastLiftF       = effLf;
+  const liftMag   = Math.max(0.4, Math.abs(effLf)) * (2.2 + t*3.5) * spdFactor;
+  lastLiftLen     = liftMag * S;
+  const lens={
+    lift:   liftMag,
+    drag:   1.4 + t*2,
+    weight: 3.0,
+    thrust: 1 + t*5
+  };
+  for(const[k,arr]of Object.entries(FA))
+    arr.setLength(lens[k]*S, .42*S, .30*S);
+  tickArrowsLive();
+}
+// Update directions/positions every frame to follow plane rotation.
+function tickArrowsLive(){
+  if(!modelRoot || !FA.lift) return;
+  if(!FA.lift.visible && !FA.thrust.visible) return;
+  modelRoot.updateMatrixWorld(true);
+  modelRoot.matrixWorld.extractBasis(_xAx, _yAx, _zAx);
+  // Re-read body world position
+  if(parts['Body']?.node) parts['Body'].node.getWorldPosition(bodyC);
+  // Lift: plane's local +Y (or -Y if lift is negative)
+  _tmpDir.copy(_yAx); if(lastLiftF<0) _tmpDir.negate();
+  FA.lift.setDirection(_tmpDir);
+  // Thrust: plane's forward (local +Z)
+  FA.thrust.setDirection(_zAx);
+  // Drag: plane's backward (local -Z)
+  _tmpDir.copy(_zAx).negate();
+  FA.drag.setDirection(_tmpDir);
+  // Weight: always world -Y
+  FA.weight.setDirection(new THREE.Vector3(0,-1,0));
+  // Position all at body centre
+  for(const arr of Object.values(FA)) arr.position.copy(bodyC);
+}
+// spec: 'all' | 'none' | 'lift' (only lift arrow visible)
+function showArrows(spec){
+  for(const k in FA) FA[k].visible = (spec==='all' || spec===k);
+}
+
+// ─── CONTROL-SURFACE LIFT ARROWS ──────────────────────────────────────────────
+// Small "delta-lift" arrows that show which way an aileron / elevator pushes.
+// They grow with deflection magnitude and flip direction when the surface
+// produces downforce.
+const CA={};                     // { aileronL, aileronR, elevator, rudder }
+const _caPos=new THREE.Vector3();
+function initControlArrows(){
+  // Ailerons in green (same family as lift), elevator cyan, rudder magenta-pink.
+  CA.aileronL = new FancyArrow(0x00e5a0);
+  CA.aileronR = new FancyArrow(0x00e5a0);
+  CA.elevator = new FancyArrow(0x7fd8ff);
+  CA.rudder   = new FancyArrow(0xff7ad0);
+  for(const k in CA){ CA[k].visible=false; scene.add(CA[k]); }
+}
+function showControlArrows(spec){
+  CA.aileronL.visible = (spec==='aileron');
+  CA.aileronR.visible = (spec==='aileron');
+  CA.elevator.visible = (spec==='elevator');
+  CA.rudder.visible   = (spec==='rudder');
+}
+// Updated every frame so they ride the plane's pose.
+function tickControlArrows(){
+  if(!modelRoot || !CA.aileronL) return;
+  if(!CA.aileronL.visible && !CA.elevator.visible && !CA.rudder.visible) return;
+  modelRoot.updateMatrixWorld(true);
+  modelRoot.matrixWorld.extractBasis(_xAx, _yAx, _zAx);
+  const S = MHS * 0.15;            // smaller than the four-force arrows
+
+  if(CA.aileronL.visible){
+    const ail = lessonInputs.aileron ?? 0;   // +30 → roll right
+    // Left aileron DEFLECTS DOWN at +ail → left wing makes MORE lift (longer arrow up).
+    // Right aileron DEFLECTS UP   at +ail → right wing makes LESS lift (shorter or downward).
+    const base = 1.4;
+    const dL =  base + (ail/30) * 1.2;       // delta-lift on left wing
+    const dR =  base - (ail/30) * 1.2;       // delta-lift on right wing
+    const sizeArrow = (arr, partName, dLift)=>{
+      const p = parts[partName]?.node; if(!p) return;
+      p.getWorldPosition(_caPos);
+      arr.position.copy(_caPos);
+      _tmpDir.copy(_yAx); if(dLift < 0) _tmpDir.negate();
+      arr.setDirection(_tmpDir);
+      const len = Math.max(0.25, Math.abs(dLift)) * S;
+      arr.setLength(len, 0.38*S, 0.26*S);
+    };
+    sizeArrow(CA.aileronL, 'LeftAileron',  dL);
+    sizeArrow(CA.aileronR, 'RightAileron', dR);
+  }
+
+  if(CA.elevator.visible){
+    const elev = lessonInputs.elevator ?? 0;  // +30 = stick back = elevator UP = tail-down force
+    const p = parts['Elevator']?.node; if(p){
+      p.getWorldPosition(_caPos);
+      CA.elevator.position.copy(_caPos);
+      // Net tail force = constant trim downforce + control input.
+      // Smoothly flips through zero as elev sweeps from + → −.
+      const trim    = -0.6;                 // always downward (negative incidence trick)
+      const control = -(elev / 30) * 2.0;   // elev>0 → more down, elev<0 → up
+      const net     = trim + control;       // signed: negative = down, positive = up
+      const sign    = net >= 0 ? +1 : -1;
+      _tmpDir.copy(_yAx).multiplyScalar(sign);
+      CA.elevator.setDirection(_tmpDir);
+      const len = Math.max(0.25, Math.abs(net)) * S;
+      CA.elevator.setLength(len, 0.42*S, 0.30*S);
+    }
+  }
+
+  if(CA.rudder.visible){
+    const rud = lessonInputs.rudder ?? 0;   // +30 = nose right
+    const p = parts['Rudder']?.node; if(p){
+      p.getWorldPosition(_caPos);
+      CA.rudder.position.copy(_caPos);
+      // The side force on the rudder is opposite to where it pushes the tail.
+      // +rud → nose right (= plane's right = -X in this rig). Tail is pushed to +X,
+      // so the lift on the rudder itself points to plane's LEFT (+X).
+      // (Force grows with |rud|; arrow flips direction with the sign of rud.)
+      const sign = rud >= 0 ? +1 : -1;
+      _tmpDir.copy(_xAx).multiplyScalar(sign);
+      CA.rudder.setDirection(_tmpDir);
+      const len = Math.max(0.20, Math.abs(rud)/30 * 1.8) * S;
+      CA.rudder.setLength(len, 0.42*S, 0.30*S);
+    }
+  }
+}
+
+// ─── AIRFLOW PARTICLES ────────────────────────────────────────────────────────
+let ptCloud=null; const NP=320;
+function initParticles(){
+  const pos=new Float32Array(NP*3),col=new Float32Array(NP*3),meta=new Float32Array(NP*2);
+  const C=MC,S=MHS;
+  for(let i=0;i<NP;i++){
+    const ab=Math.random()>.38;
+    const xo=(Math.random()-.5)*S*1.5;
+    const yo=ab?C.y+S*.02+Math.random()*S*.2:C.y-Math.random()*S*.18;
+    pos[i*3]=C.x+xo; pos[i*3+1]=yo; pos[i*3+2]=C.z+S*.9-Math.random()*S*1.8;
+    meta[i*2]=ab?1.3+Math.random()*.5:.6+Math.random()*.25; meta[i*2+1]=yo;
+    if(ab){col[i*3]=1;col[i*3+1]=.18+Math.random()*.28;col[i*3+2]=.05;}
+    else  {col[i*3]=.1;col[i*3+1]=.6+Math.random()*.2;  col[i*3+2]=1; }
+  }
+  const geo=new THREE.BufferGeometry();
+  geo.setAttribute('position',new THREE.BufferAttribute(pos,3));
+  geo.setAttribute('color',   new THREE.BufferAttribute(col,3));
+  geo._meta=meta;
+  ptCloud=new THREE.Points(geo,new THREE.PointsMaterial(
+    {size:.17,vertexColors:true,sizeAttenuation:true,transparent:true,opacity:.88}));
+  ptCloud.visible=false; scene.add(ptCloud);
+}
+function tickParticles(dt){
+  if(!ptCloud?.visible)return;
+  const pos=ptCloud.geometry.attributes.position, meta=ptCloud.geometry._meta;
+  const C=MC,S=MHS,thr=.4+.6*(gThrottle/100);
+  for(let i=0;i<NP;i++){
+    const sp=meta[i*2]*thr, iy=meta[i*2+1], ab=iy>C.y;
+    pos.array[i*3+2]-=sp*S*.55*dt;
+    const zr=(pos.array[i*3+2]-C.z)/(S*.8);
+    const inf=Math.exp(-zr*zr*1.5)*Math.exp(-pos.array[i*3]*pos.array[i*3]/(S*S*.6));
+    pos.array[i*3+1]+=(ab?1:-1)*inf*S*.04*dt*sp;
+    if(pos.array[i*3+2]<C.z-S*.9){pos.array[i*3+2]=C.z+S*.9;pos.array[i*3+1]=iy;}
+  }
+  pos.needsUpdate=true;
+}
+
+// ─── 2-D AIRFOIL ──────────────────────────────────────────────────────────────
+const afEl=document.getElementById('af-cv');
+const afX=afEl.getContext('2d');
+const AW=640,AH=360;
+
+// In the 2-D airfoil view the wing is fixed and air flows left → right.
+// AoA > 0 tips the LEADING EDGE (left side) UP — same direction the 3D plane
+// pitches when AoA is positive, so the two visualisations stay aligned.
+// In canvas coordinates +y is DOWN, so we rotate by NEGATIVE aoa (counter-clockwise
+// in math space = clockwise on canvas = leading edge rising).
+function wProf(aoa){
+  const ch=AW*.48,px=AW*.22,py=AH*.52,mt=ch*.085,N=50;
+  const rad=-aoa*Math.PI/180, cos=Math.cos(rad), sin=Math.sin(rad);
+  const top=[],bot=[];
+  for(let i=0;i<=N;i++){
+    const t=i/N, lx=t*ch;
+    const camb=Math.sin(Math.PI*t*.8)*mt*.22;
+    const tk  =Math.sin(Math.PI*Math.pow(t,.42))*mt;
+    for(const[arr,s] of [[top,-1],[bot,.5]]){
+      const ly=-camb+s*tk;
+      arr.push({x:px+lx*cos+ly*sin, y:py-lx*sin+ly*cos});
+    }
+  }
+  return{top,bot,px,py,ch,mt};
+}
+function wtY(x,p,aoa){
+  const{px,ch,mt,py}=p;
+  const rad=-aoa*Math.PI/180, cos=Math.cos(rad), sin=Math.sin(rad);
+  const t=(x-px)/(ch*Math.max(cos,.7)); if(t<0||t>1)return null;
+  const c=Math.sin(Math.PI*t*.8)*mt*.22, tk=Math.sin(Math.PI*Math.pow(t,.42))*mt;
+  return py - (t*ch)*sin + (-c - tk)*cos;
+}
+function wbY(x,p,aoa){
+  const{px,ch,mt,py}=p;
+  const rad=-aoa*Math.PI/180, cos=Math.cos(rad), sin=Math.sin(rad);
+  const t=(x-px)/(ch*Math.max(cos,.7)); if(t<0||t>1)return null;
+  const c=Math.sin(Math.PI*t*.8)*mt*.22, tk=Math.sin(Math.PI*Math.pow(t,.42))*mt;
+  return py - (t*ch)*sin + (-c + tk*.5)*cos;
+}
+
+let afAoa=5,afSpd=60,afP=wProf(5);
+const AFA=[13,23,36,53,75],AFB=[15,33,57];
+const afPts=[];
+function buildAFPts(){
+  afPts.length=0; const N=8;
+  AFA.forEach((s,li)=>{for(let j=0;j<N;j++)afPts.push({ab:true, li,x:20+(j/N)*(AW-40),sp:1.55-li*.08});});
+  AFB.forEach((s,li)=>{for(let j=0;j<N;j++)afPts.push({ab:false,li,x:20+(j/N)*(AW-40),sp:.63+li*.04});});
+}
+buildAFPts();
+function afY(pt,p){
+  const sep=pt.ab?AFA[pt.li]:AFB[pt.li];
+  const e=afAoa/20;  // -0.25 .. +0.9 for current range
+  // Above wing: compress for +AoA (faster, lower pressure), expand for -AoA
+  // Below wing: opposite — compress for -AoA (faster), expand for +AoA
+  const cmp=pt.ab?Math.max(.35,1-e*.65):Math.max(.4,1+e*.40);
+  const act=sep*cmp;
+  if(pt.ab){const wy=wtY(pt.x,p,afAoa);return wy!==null?wy-act:p.py-60-act;}
+  const wy=wbY(pt.x,p,afAoa);return wy!==null?wy+act:p.py+act;
+}
+function tickAFPts(dt){
+  const sc=afSpd/60,st=afAoa>14;
+  for(const pt of afPts){
+    pt.x+=pt.sp*sc*140*dt; if(pt.x>AW+10)pt.x=-10;
+    if(st&&pt.ab){const t=(pt.x-afP.px)/afP.ch;if(t>.45)pt.x+=(Math.random()-.5)*5*dt*60;}
+  }
+}
+function drawAF(){
+  afX.clearRect(0,0,AW,AH);
+  const bg=afX.createLinearGradient(0,0,0,AH);
+  bg.addColorStop(0,'#030c1a');bg.addColorStop(1,'#0b2240');
+  afX.fillStyle=bg;afX.fillRect(0,0,AW,AH);
+  const pg=afX.createLinearGradient(0,0,0,AH);
+  const ia=Math.min(afAoa,14)/14;
+  pg.addColorStop(0,`rgba(255,60,60,${.10+ia*.13})`);
+  pg.addColorStop(.45,'rgba(255,60,60,.02)');
+  pg.addColorStop(.55,'rgba(60,100,255,.02)');
+  pg.addColorStop(1,'rgba(60,100,255,.14)');
+  afX.fillStyle=pg;afX.fillRect(0,0,AW,AH);
+  const st=afAoa>14;
+  // streamlines
+  [{ab:true},{ab:false}].forEach((_,idx)=>{
+    const lanes=idx===0?AFA.map((_,li)=>({ab:true,li})):AFB.map((_,li)=>({ab:false,li}));
+    for(const lk of lanes){
+      afX.beginPath();let s=false;
+      for(let x=0;x<=AW;x+=4){
+        const fp={...lk,x};let y=afY(fp,afP);
+        if(st&&lk.ab){const t=(x-afP.px)/afP.ch;if(t>.45&&t<1.1)y+=Math.sin(x*.25+afAoa)*5*(t-.45)/.55;}
+        if(!s){afX.moveTo(x,y);s=true;}else afX.lineTo(x,y);
+      }
+      afX.strokeStyle=lk.ab?'rgba(255,120,60,.28)':'rgba(60,150,255,.22)';
+      afX.lineWidth=1;afX.stroke();
+    }
+  });
+  // wing
+  const{top,bot}=afP;
+  afX.beginPath();afX.moveTo(top[0].x,top[0].y);
+  for(const p of top)afX.lineTo(p.x,p.y);
+  for(let i=bot.length-1;i>=0;i--)afX.lineTo(bot[i].x,bot[i].y);
+  afX.closePath();afX.fillStyle='#3a7ab8';afX.fill();
+  afX.strokeStyle='#6ab0e0';afX.lineWidth=1.5;afX.stroke();
+  // particles
+  for(const pt of afPts){
+    const y=afY(pt,afP);
+    afX.beginPath();afX.arc(pt.x,y,pt.ab?2.4:2,0,Math.PI*2);
+    afX.fillStyle=pt.ab?`rgba(255,${90+pt.li*22},50,.95)`:`rgba(50,${155+pt.li*18},255,.92)`;
+    afX.fill();
+  }
+  if(st){
+    afX.fillStyle='rgba(255,40,40,.9)';afX.font='bold 20px Inter,sans-serif';
+    afX.fillText('⚠ STALL!',AW*.58,AH*.27);
+    afX.fillStyle='rgba(255,140,140,.8)';afX.font='12px Inter,sans-serif';
+    afX.fillText('Airflow separated from upper surface',AW*.44,AH*.37);
+  }
+  afX.font='bold 11px Inter,sans-serif';
+  afX.fillStyle='rgba(255,110,60,.95)';afX.fillText('LOW PRESSURE  (fast air)  → LIFT',8,17);
+  afX.fillStyle='rgba(60,140,255,.9)'; afX.fillText('HIGH PRESSURE (slow air)',8,AH-7);
+  afX.fillStyle='rgba(140,200,255,.4)';afX.font='11px sans-serif';
+  afX.fillText('→ airflow →',AW-92,AH*.5+4);
+  // lift arrow — uses same physics as 3D (negative at AoA < -3°)
+  const ax=afP.px+afP.ch*.38;
+  const lfRaw=st?0.3:liftFactor(afAoa);
+  const lfMag=lfRaw*(afSpd/60);
+  const lhMag=Math.max(10,Math.min(82,Math.abs(lfMag)*55));
+  const up=lfMag>=0;
+  const ay=up?(wtY(ax,afP,afAoa)??afP.py-50):(wbY(ax,afP,afAoa)??afP.py+30);
+  const dir=up?-1:1;
+  const col=up?'#00e898':'#ff7070';
+  afX.strokeStyle=col;afX.lineWidth=2.2;
+  afX.beginPath();afX.moveTo(ax,ay);afX.lineTo(ax,ay+dir*lhMag);afX.stroke();
+  afX.beginPath();
+  afX.moveTo(ax-5,ay+dir*(lhMag-8));
+  afX.lineTo(ax,ay+dir*lhMag);
+  afX.lineTo(ax+5,ay+dir*(lhMag-8));
+  afX.stroke();
+  afX.fillStyle=col;afX.font='bold 10px sans-serif';
+  afX.fillText(up?'LIFT':'NEG. LIFT',ax+8,ay+dir*lhMag+(up?4:-4));
+  afX.fillStyle='rgba(160,210,160,.7)';afX.font='10px sans-serif';
+  afX.fillText(`AoA: ${afAoa}°  |  ${afSpd} kts  |  L: ${lfMag.toFixed(2)}`,8,AH*.5-5);
+}
+
+// ─── LABELS ───────────────────────────────────────────────────────────────────
+const LBLS={lift:document.getElementById('fl-lift'),drag:document.getElementById('fl-drag'),
+  weight:document.getElementById('fl-weight'),thrust:document.getElementById('fl-thrust'),
+  part:document.getElementById('fl-part')};
+function projLbl(el,wp){
+  const sc=wp.clone().project(camera);
+  if(sc.z>1){el.style.display='none';return;}
+  el.style.left=((sc.x*.5+.5)*canvas3d.clientWidth)+'px';
+  el.style.top =((-sc.y*.5+.5)*canvas3d.clientHeight)+'px';
+  el.style.display='block';
+}
+function hideAllLbls(){for(const l of Object.values(LBLS))l.style.display='none';}
+const _lblTmp=new THREE.Vector3();
+function tickLbls(thr,aoa){
+  const S=MHS*FA_S_MULT, t=thr/100, lf=lastLiftF;
+  // Lift arrow + label only visible when FA.lift.visible (forces/explore/lift lessons)
+  if(FA.lift?.visible){
+    const liftLen = lastLiftLen * 1.25;   // uses spd/boost-adjusted length
+    _lblTmp.copy(_yAx).multiplyScalar(lf>=0?liftLen:-liftLen).add(bodyC);
+    projLbl(LBLS.lift, _lblTmp);
+  } else LBLS.lift.style.display='none';
+
+  if(FA.thrust?.visible){
+    // Pull labels in close to each arrow tip (1.08× length instead of 1.25×)
+    const thrLen=(1+t*5)*S*1.08;
+    _lblTmp.copy(_zAx).multiplyScalar(thrLen).add(bodyC);
+    projLbl(LBLS.thrust, _lblTmp);
+
+    const drgLen=(1.4+t*2)*S*1.08;
+    _lblTmp.copy(_zAx).multiplyScalar(-drgLen).add(bodyC);
+    projLbl(LBLS.drag, _lblTmp);
+
+    _lblTmp.set(bodyC.x, bodyC.y-3.0*S*1.08, bodyC.z);
+    projLbl(LBLS.weight, _lblTmp);
+  } else ['drag','weight','thrust'].forEach(k=>LBLS[k].style.display='none');
+}
+function tickPartLbl(){
+  const d=LESSONS[curLesson];
+  if(d?.highlight&&parts[d.highlight[0]]){
+    const pos=pCentre(d.highlight[0]);pos.y+=MHS*.12;projLbl(LBLS.part,pos);
+  }else LBLS.part.style.display='none';
+}
+
+// ─── LESSON SYSTEM ────────────────────────────────────────────────────────────
+let curLesson=null; const lessonInputs={};
+
+// Camera presets (side-on for forces/lift, rear for roll, top for yaw, side for pitch)
+// Distances are scaled by `camZoom` so a narrow portrait viewport pulls the camera
+// farther back (preventing the plane from getting cropped horizontally on mobile).
+function camZoom(){
+  const a = (canvas3d.clientWidth||1) / (canvas3d.clientHeight||1);
+  return a < 1 ? Math.pow(1/a, 0.6) : 1;
+}
+// Global zoom-out multiplier — pulls every preset camera back two "steps"
+// so the plane + vectors are comfortably framed with breathing room.
+const VIEW_ZOOM = 1.45;
+function getCam(id){
+  const C=MC, S=MHS*VIEW_ZOOM, z=camZoom();
+  switch(id){
+    case 'forces':
+      return{p:new THREE.Vector3(C.x+S*2.6*z,C.y+S*.15,C.z),t:C.clone()};
+    case 'lift':
+      // Camera on +X side → plane's nose is on screen-LEFT, matching the
+      // airfoil illustration's leading edge (also on the left).
+      return{p:new THREE.Vector3(C.x+S*2.6*z,C.y+S*.15,C.z),t:C.clone()};
+    case 'flaps':
+      return{p:new THREE.Vector3(C.x-S*1.5*z,C.y+S*1.0*z,C.z-S*1.7*z),t:C.clone()};
+    case 'stab':
+      return{p:new THREE.Vector3(C.x-S*1.6*z,C.y+S*.7*z,C.z-S*2.0*z),t:C.clone()};
+    case 'roll':
+      return{p:new THREE.Vector3(C.x,C.y+S*.45*z,C.z-S*2.7*z),t:C.clone()};
+    case 'yaw':
+      return{p:new THREE.Vector3(C.x+S*.3,C.y+S*2.4*z,C.z-S*1.8*z),t:C.clone()};
+    case 'pitch':
+      return{p:new THREE.Vector3(C.x+S*2.4*z,C.y+S*.35,C.z+S*.1),t:C.clone()};
+    default:
+      return{p:new THREE.Vector3(C.x+S*1.4*z,C.y+S*.7*z,C.z+S*1.7*z),t:C.clone()};
+  }
+}
+
+function enterLesson(id){
+  if(!rig)return;
+  curLesson=id;
+  const d=LESSONS[id];
+  document.querySelectorAll('.nb').forEach(b=>b.classList.toggle('active',b.dataset.l===id));
+  document.getElementById('ititle').textContent=d.title;
+  document.getElementById('isub').textContent  =d.sub;
+  document.getElementById('ibody').innerHTML   =d.body;
+
+  document.body.classList.toggle('has-airfoil', !!d.airfoil);
+  if(ptCloud)ptCloud.visible=(id==='lift');
+
+  for(const k in lessonInputs)delete lessonInputs[k];
+  const cEl=document.getElementById('crows'); cEl.innerHTML='';
+  document.body.classList.toggle('has-controls', (d.controls||[]).length > 0);
+  for(const ctrl of(d.controls||[])){
+    lessonInputs[ctrl.id]=ctrl.value;
+    const row=document.createElement('div'); row.className='cr';
+    row.innerHTML=`<div class="ct"><span class="cn">${ctrl.label}</span>
+      <span class="cv" id="cv-${ctrl.id}">${ctrl.value}${ctrl.unit||''}</span></div>
+      <input type="range" id="cr-${ctrl.id}" min="${ctrl.min}" max="${ctrl.max}" value="${ctrl.value}" step="1">
+      ${ctrl.hint?`<div class="ch">${ctrl.hint}</div>`:''}`;
+    cEl.appendChild(row);
+    document.getElementById('cr-'+ctrl.id).addEventListener('input',e=>{
+      const v=parseFloat(e.target.value);
+      lessonInputs[ctrl.id]=v;
+      document.getElementById('cv-'+ctrl.id).textContent=v+(ctrl.unit||'');
+      applyInputs();
+    });
+  }
+
+  clearHL(); for(const k in LO)delete LO[k];
+  poseGoal.roll=0;poseGoal.yaw=0;poseGoal.pitch=0;
+  showArrows(false);hideAllLbls();
+
+  if(d.highlight){
+    setHL(d.highlight);
+    document.getElementById('fl-part-txt').textContent=d.partLabel||d.highlight[0].toUpperCase();
+  }
+
+  const cam=getCam(id); flyTo(cam.p,cam.t);
+  applyInputs();
+  showInteractHint();
+}
+
+// Interaction hint — pops in after each lesson change, fades after a few seconds.
+const _ihEl = document.getElementById('interact-hint');
+let   _ihTimer = null;
+function showInteractHint(){
+  if(!_ihEl) return;
+  _ihEl.classList.add('show');
+  clearTimeout(_ihTimer);
+  _ihTimer = setTimeout(()=> _ihEl.classList.remove('show'), 4500);
+}
+
+const stallWarn=document.getElementById('stall-warn');
+function applyInputs(){
+  const inp=lessonInputs, id=curLesson;
+  gThrottle=inp.throttle??60;
+  const ail=inp.aileron??0,rud=inp.rudder??0,elev=inp.elevator??0,aoa=inp.aoa??0;
+
+  // Arrow visibility per lesson:
+  //   forces / explore → all four force arrows
+  //   lift             → just the lift arrow (paired with the 2-D airfoil)
+  //   everything else  → no arrows
+  if(id==='forces'||id==='explore'){
+    showArrows('all'); updateArrows(inp.throttle??60, id==='forces'?aoa:null);
+  } else if(id==='lift'){
+    showArrows('lift'); updateArrows(60, aoa, inp.aspeed);
+  } else if(id==='flaps'){
+    // Asymmetric boost so a reflexed flap actually inverts the lift vector:
+    //   -30 → −1.0  (lift flips DOWN, full reverse)
+    //   -15 →  0    (no net lift, the wing produces nothing)
+    //     0 → +1.0  (baseline)
+    //   +15 → +1.5
+    //   +30 → +2.0  (double lift, full flaps deployed)
+    const fl = inp.flaps ?? 0;
+    const boost = fl >= 0 ? 1 + fl/30 : 1 + (2*fl)/30;
+    showArrows('lift'); updateArrows(60, 4, inp.aspeed, boost);
+  } else {
+    showArrows('none');
+  }
+
+  // Control-surface lift arrows: visible only in their lessons.
+  if      (id==='roll')    showControlArrows('aileron');
+  else if (id==='pitch')   showControlArrows('elevator');
+  else if (id==='yaw')     showControlArrows('rudder');
+  else                     showControlArrows('none');
+
+  // Aileron deflection signs are flipped vs. the slider so that:
+  //   +aileron → LEFT aileron DOWN, RIGHT aileron UP  (rolls plane RIGHT)
+  // The model's local +X axis runs along its LEFT wing in this rig, so the
+  // body-roll and yaw sign conventions below also account for that.
+  LO['LeftAileron'] = -ail; LO['RightAileron'] = +ail;
+  LO['Rudder']      =  rud; LO['Elevator']     = elev;
+  // Flaps both deflect DOWNWARD together when slider is positive.
+  const flp = inp.flaps ?? 0;
+  LO['LeftFlap']    = -flp; LO['RightFlap']    = -flp;
+
+  // Pitch unchanged (works correctly): rotation.x = -aoa tilts the nose UP.
+  // In 'lift' lesson, match the 2D airfoil 1:1 so the 3D wing chord lines
+  // up with the illustrated chord. 'forces' uses a softer 0.9× for cinematic feel.
+  if     (id==='lift')                    poseGoal.pitch = -aoa*1.00;
+  else if(id==='forces')                  poseGoal.pitch = -aoa*0.90;
+  else if(id==='pitch'||id==='explore')   poseGoal.pitch = -elev*.35;
+  else                                     poseGoal.pitch = 0;
+
+  // Roll: +aileron → roll right (right wing dips). Sign matched to this rig.
+  poseGoal.roll = (id==='roll' || id==='explore') ? +ail*.6 : 0;
+  // Yaw: +rudder → nose swings to plane's right (= screen-right in rear view).
+  poseGoal.yaw  = (id==='yaw'  || id==='explore') ? -rud*.4 : 0;
+
+  if(inp.aoa   !==undefined){afAoa=inp.aoa;   afP=wProf(afAoa);}
+  if(inp.aspeed!==undefined) afSpd=inp.aspeed;
+
+  // Stall warning — visible when AoA exceeds critical angle in a lesson where AoA is shown
+  const showStall=(id==='forces'||id==='lift') && aoa>15;
+  stallWarn.style.display=showStall?'block':'none';
+}
+
+// ─── UI ───────────────────────────────────────────────────────────────────────
+document.querySelectorAll('.nb').forEach(b=>{
+  b.addEventListener('click',()=>{if(rig)enterLesson(b.dataset.l);});
+});
+
+// Splash dismiss
+const splashEl = document.getElementById('splash');
+document.getElementById('splash-enter').addEventListener('click', ()=>{
+  splashEl.classList.add('fade');
+  setTimeout(()=>splashEl.remove(), 600);
+});
+
+// Details modal (mobile lesson description)
+const dmBtn   = document.getElementById('details-btn');
+const dmModal = document.getElementById('details-modal');
+const dmClose = document.getElementById('details-close');
+dmBtn.addEventListener('click', ()=>{
+  if(!curLesson) return;
+  const d = LESSONS[curLesson];
+  document.getElementById('dm-title').textContent = d.title;
+  document.getElementById('dm-sub'  ).textContent = d.sub;
+  document.getElementById('details-body').innerHTML = d.body;
+  dmModal.classList.add('open');
+});
+dmClose.addEventListener('click', ()=> dmModal.classList.remove('open'));
+dmModal.addEventListener('click', (e)=>{
+  if(e.target === dmModal) dmModal.classList.remove('open');  // tap backdrop to dismiss
+});
+document.addEventListener('keydown', (e)=>{
+  if(e.key === 'Escape' && dmModal.classList.contains('open')) dmModal.classList.remove('open');
+});
+
+// Collapsible info panel — tap header (or chevron) to toggle.
+// Mobile defaults to collapsed; desktop defaults to expanded.
+const ovInfo=document.getElementById('ov-info');
+const infoHdr=document.getElementById('info-header');
+function setInfoCollapsed(c){
+  ovInfo.classList.toggle('collapsed',c);
+  document.body.classList.toggle('info-expanded',!c);
+}
+infoHdr.addEventListener('click',e=>{
+  // Don't toggle if the click bubbled from an inner button (none currently, but safe)
+  setInfoCollapsed(!ovInfo.classList.contains('collapsed'));
+});
+// Initial state
+const isMobile = window.matchMedia('(max-width:680px)').matches;
+setInfoCollapsed(isMobile);
+// Re-evaluate on viewport change (e.g., orientation flip)
+window.matchMedia('(max-width:680px)').addEventListener('change',e=>{
+  setInfoCollapsed(e.matches);
+});
+
+// ─── RESIZE ───────────────────────────────────────────────────────────────────
+function resize(){
+  const w=canvas3d.clientWidth,h=canvas3d.clientHeight;
+  if(renderer.domElement.width!==w||renderer.domElement.height!==h){
+    renderer.setSize(w,h,false);camera.aspect=w/h;camera.updateProjectionMatrix();
+  }
+}
+window.addEventListener('resize',resize);
+
+// On viewport orientation / layout change, refit the camera so the plane
+// stays fully framed (uses the aspect-aware camZoom in getCam).
+let _refitT=null;
+window.addEventListener('resize', ()=>{
+  clearTimeout(_refitT);
+  _refitT = setTimeout(()=>{
+    if(rig && curLesson){
+      const cam = getCam(curLesson);
+      flyTo(cam.p, cam.t, 0.45);
+    }
+  }, 220);
+});
+
+// ─── LOOP ─────────────────────────────────────────────────────────────────────
+let lastT=0,spinT=0;
+function tick(ts){
+  requestAnimationFrame(tick);
+  const dt=Math.min((ts-lastT)/1000,.05);lastT=ts;spinT+=dt;
+  resize();
+  if(rig&&modelRoot){
+    for(const n in parts)applyPart(n,spinT);
+    modelRoot.updateMatrixWorld(true);
+    tickPose(dt);
+  }
+  tickCam(dt); tickClouds(dt); tickEnvTilt(dt); tickParticles(dt);
+  tickArrowsLive();           // arrows follow plane orientation every frame
+  tickControlArrows();
+  if(document.body.classList.contains('has-airfoil')){tickAFPts(dt);drawAF();}
+  tickLbls(lessonInputs.throttle??60,
+           (curLesson==='forces'||curLesson==='lift')?lessonInputs.aoa:null);
+  tickPartLbl();
+  if(!camAnim)orbit.update();
+  renderer.render(scene,camera);
+}
+requestAnimationFrame(tick);
+</script>
+</body>
+</html>

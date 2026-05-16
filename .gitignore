@@ -1,0 +1,27 @@
+# Claude Code working folder — never push this to a public repo
+.claude/
+.claude-*/
+memory/
+
+# OS junk
+.DS_Store
+Thumbs.db
+desktop.ini
+ehthumbs.db
+
+# Editor / IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# Node / build tooling (in case you ever add it)
+node_modules/
+npm-debug.log
+yarn-error.log
+
+# Temp files
+*.tmp
+*.log
+*.bak
